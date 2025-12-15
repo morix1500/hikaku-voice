@@ -1,10 +1,10 @@
-import asyncio
 import os
 import json
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 from stt_service import STTManager
+from livekit.plugins import deepgram, openai, soniox
 
 load_dotenv()
 
@@ -33,8 +33,6 @@ async def startup_event():
     else:
         logger.info(f"SONIOX_API_KEY loaded (starts with {soniox_key[:3]}...)")
 
-from livekit.plugins import deepgram, openai, soniox
-# import other plugins as needed
 
 # ...
 
@@ -49,12 +47,10 @@ async def websocket_endpoint(websocket: WebSocket):
         deepgram.STT(model="nova-2-general", language="ja"),
         openai.STT(language="ja", use_realtime=True),
         soniox.STT(
-            api_key=os.getenv("SONIOX_API_KEY"),
             params=soniox.STTOptions(
                 model="stt-rt-v3",
                 language_hints=["ja"],
                 enable_language_identification=False,
-                context="日本の飲食店の商品名、注文商品の希望受け取り時間",
             ),
         ),
     ]
@@ -85,4 +81,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8009)

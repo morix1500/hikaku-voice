@@ -3,8 +3,8 @@ trap "kill 0" EXIT
 
 echo "Starting Backend..."
 cd backend
-source .venv/bin/activate
-uvicorn main:app --reload --host 0.0.0.0 --port 8009 &
+# source .venv/bin/activate # No longer needed with uv
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8009 &
 
 echo "Starting Frontend..."
 cd ../frontend

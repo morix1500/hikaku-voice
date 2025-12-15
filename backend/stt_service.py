@@ -1,15 +1,11 @@
 import asyncio
-import json
 import time
 import logging
 from livekit import agents, rtc
 from livekit.agents import stt
-from livekit.plugins import deepgram
 import aiohttp
 import ssl
 import certifi
-import math
-import struct
 
 logger = logging.getLogger("stt-service")
 
