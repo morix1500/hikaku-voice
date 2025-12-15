@@ -5,3 +5,5 @@ __pycache__/
 .DS_Store
 node_modules/
 .next/
+plugins_config.py
+*.log

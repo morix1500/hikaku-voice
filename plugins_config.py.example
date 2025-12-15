@@ -1,0 +1,7 @@
+from livekit.plugins import deepgram, openai
+
+# Configure your STT plugins here
+stt_plugins = [
+    deepgram.STT(model="nova-2-general", language="ja"),
+    openai.STT(language="ja", use_realtime=True),
+]

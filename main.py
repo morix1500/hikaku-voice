@@ -1,4 +1,3 @@
-import os
 import json
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -6,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from stt_service import STTManager
-from livekit.plugins import deepgram, openai, soniox
 
 load_dotenv()
 
@@ -23,26 +21,6 @@ templates = Jinja2Templates(directory="templates")
 async def index_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.on_event("startup")
-async def startup_event():
-    openai_key = os.getenv("OPENAI_API_KEY")
-    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-    soniox_key = os.getenv("SONIOX_API_KEY")
-    
-    if not openai_key:
-        logger.error("OPENAI_API_KEY is missing in environment!")
-    else:
-        logger.info(f"OPENAI_API_KEY loaded (starts with {openai_key[:3]}...)")
-        
-    if not deepgram_key:
-        logger.error("DEEPGRAM_API_KEY is missing in environment!")
-    else:
-        logger.info(f"DEEPGRAM_API_KEY loaded (starts with {deepgram_key[:3]}...)")
-    
-    if not soniox_key:
-        logger.error("SONIOX_API_KEY is missing in environment!")
-    else:
-        logger.info(f"SONIOX_API_KEY loaded (starts with {soniox_key[:3]}...)")
 
 
 # ...
@@ -52,19 +30,13 @@ async def websocket_endpoint(websocket: WebSocket, response_format: str = "json"
     await websocket.accept()
     logger.info(f"Client connected (format: {response_format})")
     
-    # Configure STT Plugins here
-    # You can easily add more plugins to this list
-    stt_plugins = [
-        deepgram.STT(model="nova-2-general", language="ja"),
-        openai.STT(language="ja", use_realtime=True),
-        soniox.STT(
-            params=soniox.STTOptions(
-                model="stt-rt-v3",
-                language_hints=["ja"],
-                enable_language_identification=False,
-            ),
-        ),
-    ]
+    # Configure STT Plugins
+    # Loaded from plugins_config.py (gitignored)
+    try:
+        from plugins_config import stt_plugins
+    except ImportError:
+        logger.error("plugins_config.py not found. Please copy plugins_config.py.example to plugins_config.py")
+        stt_plugins = []
     
     stt_manager = STTManager(websocket, stt_plugins, response_format=response_format)
     await stt_manager.initialize()

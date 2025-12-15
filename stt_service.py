@@ -97,7 +97,6 @@ class STTManager:
 
     async def _read_stream(self, stream, provider_name):
         logger.info(f"Started reading stream for {provider_name}")
-        stream_start_time = time.time()
         
         try:
             async for event in stream:
