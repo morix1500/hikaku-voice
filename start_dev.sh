@@ -1,13 +1,12 @@
 #!/bin/bash
 trap "kill 0" EXIT
 
-echo "Starting Backend..."
-cd backend
-# source .venv/bin/activate # No longer needed with uv
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8009 &
+# Default to port 8009 if not set
+PORT="${PORT:-8009}"
 
-echo "Starting Frontend..."
-cd ../frontend
-npm run dev -- -p 3000 &
+echo "Starting Backend on port $PORT..."
+# cd backend  <-- Removed
+# source .venv/bin/activate # No longer needed with uv
+uv run uvicorn main:app --reload --host 0.0.0.0 --port "$PORT" &
 
 wait

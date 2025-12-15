@@ -1,7 +1,9 @@
 import os
 import json
 import logging
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from stt_service import STTManager
 from livekit.plugins import deepgram, openai, soniox
@@ -11,6 +13,15 @@ load_dotenv()
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hikaku-voice")
+
+# Mount backend/static for worklet.js
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/")
+async def index_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.on_event("startup")
 async def startup_event():
@@ -37,9 +48,9 @@ async def startup_event():
 # ...
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, response_format: str = "json"):
     await websocket.accept()
-    logger.info("Client connected")
+    logger.info(f"Client connected (format: {response_format})")
     
     # Configure STT Plugins here
     # You can easily add more plugins to this list
@@ -55,7 +66,7 @@ async def websocket_endpoint(websocket: WebSocket):
         ),
     ]
     
-    stt_manager = STTManager(websocket, stt_plugins)
+    stt_manager = STTManager(websocket, stt_plugins, response_format=response_format)
     await stt_manager.initialize()
 
     try:
@@ -65,12 +76,17 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive()
             
             if "bytes" in message and message["bytes"]:
-                # logger.info(f"Received bytes: {len(message['bytes'])}")
+                #logger.info(f"Received bytes: {len(message['bytes'])}")
                 await stt_manager.process_audio(message["bytes"])
             elif "text" in message and message["text"]:
                 # Handle control messages if any
-                data = json.loads(message["text"])
-                logger.info(f"Received control message: {data}")
+                try:
+                    data = json.loads(message["text"])
+                    # logger.info(f"Received control message: {data}")
+                    stt_manager.handle_control_message(data)
+                except json.JSONDecodeError:
+                    # Might be raw text or other format
+                    pass
                 
     except WebSocketDisconnect:
         logger.info("Client disconnected")

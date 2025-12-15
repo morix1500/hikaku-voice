@@ -10,12 +10,25 @@ import certifi
 logger = logging.getLogger("stt-service")
 
 class STTManager:
-    def __init__(self, websocket, stt_plugins: list[stt.STT]):
+    def __init__(self, websocket, stt_plugins: list[stt.STT], response_format: str = "json"):
         self.websocket = websocket
         self.stt_plugins = stt_plugins
+        self.response_format = response_format
         self.streams = {} # Map provider name (or index/id) to stream
         self._tasks = set()
         self._session = None
+        self.last_client_vad_eos = None
+
+    def handle_control_message(self, data: dict):
+        if data.get("type") == "vad_speech_end":
+            # Use provided timestamp if available, otherwise fallback to current time
+            timestamp = data.get("timestamp")
+            if timestamp:
+                self.last_client_vad_eos = float(timestamp)
+            else:
+                self.last_client_vad_eos = time.time()
+                
+            logger.info(f"Client VAD: Speech ended at {self.last_client_vad_eos}")
 
     async def initialize(self):
         try:
@@ -85,15 +98,14 @@ class STTManager:
     async def _read_stream(self, stream, provider_name):
         logger.info(f"Started reading stream for {provider_name}")
         stream_start_time = time.time()
-        last_eos_time = None
         
         try:
             async for event in stream:
                 current_time = time.time()
                 
-                if event.type == agents.stt.SpeechEventType.END_OF_SPEECH:
-                    last_eos_time = current_time
-                
+                # Debug logging (generic)
+                # logger.debug(f"[{provider_name}] Event: {event.type}")
+
                 # Check event type for finality
                 is_final = event.type == agents.stt.SpeechEventType.FINAL_TRANSCRIPT
                 
@@ -102,18 +114,16 @@ class STTManager:
                 # Calculate latency
                 latency_ms = 0.0
                 if is_final and event.alternatives:
-                    alt = event.alternatives[0]
-                    # Method 1: Use end_time (Deepgram)
-                    if getattr(alt, 'end_time', 0) > 0:
-                        # end_time is relative to stream start
-                        # audio_duration_processed = alt.end_time
-                        # time_since_start = current_time - stream_start_time
-                        # Latency = time_since_start - audio_duration_processed
-                        latency_ms = (current_time - stream_start_time - alt.end_time) * 1000
-                    # Method 2: Use EOS time (OpenAI)
-                    elif last_eos_time:
-                        latency_ms = (current_time - last_eos_time) * 1000
-                
+                    # STRICT FAIRNESS: Only use Client VAD timestamp for ALL providers.
+                    if self.last_client_vad_eos:
+                         latency_ms = (current_time - self.last_client_vad_eos) * 1000
+                    else:
+                        logger.debug(f"[{provider_name}] No Client VAD signal yet. Skipping latency calc.")
+                        latency_ms = 0.0
+
+                    if latency_ms == 0.0:
+                         logger.debug(f"[{provider_name}] Latency is 0.0. vad_eos={self.last_client_vad_eos}")
+
                 payload = {
                     "type": "transcription",
                     "provider": provider_name,
@@ -125,13 +135,36 @@ class STTManager:
                 }
                 
                 # Filter empty updates if desired, but keeping them for activity indication
-                if payload["text"]:
-                    try:
-                        await self.websocket.send_json(payload)
-                    except Exception as e:
-                        # WebSocket might be closed
-                        logger.warning(f"Failed to send transcription: {e}")
-                        break
+                try:
+                    if self.response_format == "html":
+                        # ...
+                        
+                        html_content = ""
+                        if is_final:
+                            logger.info(f"[{provider_name}] Generating HTML with latency: {latency_ms}")
+                            html_content = f"""
+                            <div id="{provider_name}-log" hx-swap-oob="beforeend">
+                                <div class="segment">
+                                    <span class="text">{text}</span>
+                                    <div class="latency">Latency: {latency_ms:.0f}ms</div>
+                                </div>
+                            </div>
+                            """
+                        else:
+                             # For interim, maybe update a placeholder? 
+                             # Skipping interim for basic POC to avoid UI jitter without proper ID tracking
+                             pass
+
+                        if html_content:
+                            await self.websocket.send_text(html_content)
+                    else:
+                        if payload["text"]:
+                            await self.websocket.send_json(payload)
+                        
+                except Exception as e:
+                    # WebSocket might be closed
+                    logger.warning(f"Failed to send transcription: {e}")
+                    break
             
             logger.info(f"Stream finished for {provider_name}")
                     

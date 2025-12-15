@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hikaku Voice (htmx POC)</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
+    <script src="//unpkg.com/alpinejs" defer></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f9fafb;
+        }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.25rem;
+        }
+
+        .status {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-box {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            padding: 10px;
+            border-radius: 4px;
+            background: #f3f4f6;
+            font-family: monospace;
+        }
+
+        .segment {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .latency {
+            font-size: 0.8em;
+            color: #6b7280;
+            text-align: right;
+        }
+
+        .text {
+            white-space: pre-wrap;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #9ca3af;
+        }
+
+        button.stop {
+            background: #dc2626;
+        }
+    </style>
+</head>
+
+<body x-data="app()">
+    <div class="status">
+        <div>
+            Status: <span x-text="status"></span>
+        </div>
+        <div>
+            <button x-show="!isRecording" @click="startRecording">Start Recording</button>
+            <button x-show="isRecording" class="stop" @click="stopRecording">Stop Recording</button>
+        </div>
+    </div>
+
+    <!-- Manual WebSocket connection for POC -->
+    <div>
+        <div class="grid">
+            <!-- OpenAI -->
+            <div class="card">
+                <h2>OpenAI</h2>
+                <div id="openai-log" class="log-box"></div>
+            </div>
+
+            <!-- Deepgram -->
+            <div class="card">
+                <h2>Deepgram</h2>
+                <div id="deepgram-log" class="log-box"></div>
+            </div>
+
+            <!-- Soniox -->
+            <div class="card">
+                <h2>Soniox</h2>
+                <div id="soniox-log" class="log-box"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function app() {
+            return {
+                isRecording: false,
+                status: 'Ready',
+                audioContext: null,
+                mediaStream: null,
+                workletNode: null,
+                socket: null,
+
+                async startRecording() {
+                    try {
+                        this.status = 'Initializing...';
+
+                        // 1. Setup WebSocket
+                        this.socket = new WebSocket("ws://" + window.location.host + "/ws?response_format=html");
+
+                        this.socket.onopen = async () => {
+                            console.log("WebSocket Connected");
+                            this.status = 'Requesting Microphone...';
+                            await this.setupAudio();
+                        };
+
+                        this.socket.onmessage = (event) => {
+                            // POC: Manual OOB Swap Handler
+                            const html = event.data;
+                            // Basic check if it's the expected OOB div
+                            if (html.trim().startsWith('<div id=')) {
+                                // Create a temp container to parse the HTML
+                                const temp = document.createElement('div');
+                                temp.innerHTML = html;
+                                const newElement = temp.firstElementChild; // The wrapper div
+
+                                if (newElement) {
+                                    const targetId = newElement.getAttribute('id');
+                                    const swapMethod = newElement.getAttribute('hx-swap-oob');
+
+                                    const target = document.getElementById(targetId);
+                                    if (target && swapMethod === 'beforeend') {
+                                        // Append the *content* of the wrapper, not the wrapper itself
+                                        // The server sends <div id="..." ...> CONTENT </div>
+                                        // We want to append CONTENT to the existing div
+
+                                        // Note: insertAdjacentHTML is faster than innerHTML+=
+                                        target.insertAdjacentHTML('beforeend', newElement.innerHTML);
+
+                                        // Auto-scroll
+                                        target.scrollTop = target.scrollHeight;
+                                    }
+                                }
+                            }
+                        };
+
+                        this.socket.onerror = (e) => {
+                            console.error("WebSocket Error", e);
+                            this.status = "WebSocket Error";
+                        };
+
+                    } catch (e) {
+                        console.error(e);
+                        this.status = 'Error: ' + e.message;
+                    }
+                },
+
+                async setupAudio() {
+                    try {
+                        this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        this.audioContext = new AudioContext({ sampleRate: 16000 });
+
+                        await this.audioContext.audioWorklet.addModule('/static/worklet.js');
+
+                        const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+                        this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
+
+                        source.connect(this.workletNode);
+                        this.workletNode.connect(this.audioContext.destination);
+
+                        let maxAmp = 0;
+                        let lastSpeechTime = 0;
+                        let isSpeaking = false;
+                        const SILENCE_THRESHOLD = 500; // Int16 scale
+                        const SILENCE_DURATION = 300; // ms to trigger EOS
+
+                        this.workletNode.port.onmessage = (event) => {
+                            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                                const float32Array = event.data;
+                                const int16Array = new Int16Array(float32Array.length);
+                                let currentMax = 0;
+
+                                for (let i = 0; i < float32Array.length; i++) {
+                                    const s = Math.max(-1, Math.min(1, float32Array[i]));
+                                    int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                                    if (Math.abs(int16Array[i]) > currentMax) currentMax = Math.abs(int16Array[i]);
+                                }
+
+                                this.socket.send(int16Array.buffer);
+
+                                // VAD Logic
+                                const now = Date.now();
+                                if (currentMax > SILENCE_THRESHOLD) {
+                                    lastSpeechTime = now;
+                                    isSpeaking = true;
+                                } else {
+                                    if (isSpeaking && (now - lastSpeechTime) > SILENCE_DURATION) {
+                                        // Speech ended detected
+                                        isSpeaking = false;
+                                        console.log("VAD: Speech End Detected");
+                                        // Send the ACTUAL time speech ended (lastSpeechTime), not current time.
+                                        // Convert to seconds for backend compatibility
+                                        this.socket.send(JSON.stringify({
+                                            type: "vad_speech_end",
+                                            timestamp: lastSpeechTime / 1000.0
+                                        }));
+                                    }
+                                }
+                            }
+                        };
+
+                        this.status = 'Recording...';
+                        this.isRecording = true;
+
+                    } catch (e) {
+                        console.error("Audio Setup Error", e);
+                        this.status = "Audio Error: " + e.message;
+                    }
+                },
+
+                stopRecording() {
+                    if (this.mediaStream) {
+                        this.mediaStream.getTracks().forEach(track => track.stop());
+                        this.mediaStream = null;
+                    }
+                    if (this.audioContext) {
+                        this.audioContext.close();
+                        this.audioContext = null;
+                    }
+                    if (this.socket) {
+                        this.socket.close();
+                        this.socket = null;
+                    }
+                    this.isRecording = false;
+                    this.status = 'Stopped';
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
