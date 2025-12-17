@@ -1,0 +1,14 @@
+# Copy this file to requirements-local.txt and uncomment the plugins you want to use.
+#
+# Usage:
+#   cp requirements-local.txt.example requirements-local.txt
+#   # Uncomment the plugins you need
+#   make install
+#
+# Available plugins:
+# https://docs.livekit.io/agents/plugins/
+
+# Example plugins (add any livekit plugin you need):
+# livekit-plugins-deepgram>=1.3.6
+# livekit-plugins-openai>=1.3.6
+# ...

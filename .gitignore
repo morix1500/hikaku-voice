@@ -6,4 +6,5 @@ __pycache__/
 node_modules/
 .next/
 plugins_config.py
+requirements-local.txt
 *.log

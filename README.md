@@ -15,9 +15,32 @@ Compare multiple providers side-by-side with fair latency measurement.
 - API Keys for the LiveKit-compatible STT/TTS plugins you want to test.
 
 ### 2. Install Dependencies
+
+**Base installation:**
 ```bash
 make install
 ```
+
+**Install plugins:**
+
+This project uses a plugin-based architecture. You need to install the LiveKit plugins you want to use.
+
+```bash
+cp requirements-local.txt.example requirements-local.txt
+```
+
+Edit `requirements-local.txt` and add the plugins you need:
+```
+livekit-plugins-openai>=1.3.6
+livekit-plugins-deepgram>=1.3.6
+# Add any other plugins...
+```
+
+Then run `make install` again to install them.
+
+For available plugins, see:
+- [LiveKit Agents STT Plugins](https://docs.livekit.io/agents/models/stt/)
+- [LiveKit Agents TTS Plugins](https://docs.livekit.io/agents/models/tts/)
 
 ### 3. Configuration
 
@@ -36,10 +59,6 @@ Copy the example config to enable/disable specific plugins:
 cp plugins_config.py.example plugins_config.py
 ```
 Edit `plugins_config.py` to customize models or parameters.
-You can import any `livekit-plugins-*` package here.
-For available plugins, see:
-- [LiveKit Agents STT Plugins](https://docs.livekit.io/agents/models/stt/)
-- [LiveKit Agents TTS Plugins](https://docs.livekit.io/agents/models/tts/)
 
 ### 4. Run
 Start the development server:

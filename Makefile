@@ -7,6 +7,10 @@ run:
 
 install:
 	uv sync
+	@if [ -f requirements-local.txt ]; then \
+		echo "Installing local plugins..."; \
+		uv pip install -r requirements-local.txt; \
+	fi
 
 lint:
 	uv run ruff check .
