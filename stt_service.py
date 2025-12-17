@@ -47,9 +47,9 @@ class STTManager:
                 # Most LiveKit STT plugins store the session in _session
                 # This is a hacky but necessary workaround for standalone usage without Agent context
                 if hasattr(plugin, '_session'):
-                    plugin._session = self._session
+                    plugin._session = self._session # type: ignore
                 if hasattr(plugin, '_http_session'):
-                    plugin._http_session = self._session
+                    plugin._http_session = self._session # type: ignore
                 
                 # Handle duplicates automatically only for list-based config or if user made a mistake in dict keys (unlikely for dict keys but good safety)
                 # Actually for dict, keys are unique by definition.

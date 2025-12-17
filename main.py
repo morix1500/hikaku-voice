@@ -36,7 +36,7 @@ async def websocket_endpoint(websocket: WebSocket, response_format: str = "json"
         from plugins_config import stt_plugins
     except ImportError:
         logger.error("plugins_config.py not found. Please copy plugins_config.py.example to plugins_config.py")
-        stt_plugins = []
+        stt_plugins = {}
     
     stt_manager = STTManager(websocket, stt_plugins, response_format=response_format)
     await stt_manager.initialize()

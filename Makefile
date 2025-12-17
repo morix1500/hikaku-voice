@@ -13,3 +13,6 @@ lint:
 
 format:
 	uv run ruff format .
+
+type-check:
+	uv run ty check .
