@@ -6,3 +6,9 @@ stt_plugins = {
     "Deepgram Nova 2": deepgram.STT(model="nova-2-general", language="ja"),
     "OpenAI Realtime": openai.STT(language="ja", use_realtime=True),
 }
+
+# Configure your TTS plugins here
+tts_plugins = {
+    "Deepgram Aura (Asteria)": deepgram.TTS(model="aura-asteria-en"),
+    "OpenAI TTS (Alloy)": openai.TTS(model="tts-1", voice="alloy"),
+}

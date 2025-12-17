@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Hikaku Voice - TTS Comparison{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .input-area {
+        margin-bottom: 20px;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .input-row {
+        display: flex;
+        gap: 15px;
+        align-items: stretch;
+    }
+
+    textarea {
+        flex: 0 0 80%;
+        height: 150px;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 1rem;
+        resize: vertical;
+    }
+
+    .input-row button {
+        flex: 1;
+        min-width: 120px;
+        height: auto;
+    }
+
+    .result-box {
+        padding: 15px;
+        background: #f3f4f6;
+        border-radius: 4px;
+        text-align: center;
+    }
+
+    .metrics {
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #4b5563;
+        text-align: left;
+    }
+
+    .audio-player {
+        width: 100%;
+        margin-top: 10px;
+    }
+
+    .provider-title {
+        font-weight: bold;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="ttsApp()">
+    <div class="input-area">
+        <h2 style="margin-top: 0;">Text to Speech</h2>
+        <div class="input-row">
+            <textarea x-model="text" placeholder="Enter text to synthesize..."></textarea>
+            <button @click="synthesize" :disabled="isProcessing || !text.trim()">
+                <span x-show="!isProcessing">Compare TTS</span>
+                <span x-show="isProcessing">Processing...</span>
+            </button>
+        </div>
+        <div x-show="status" style="margin-top: 10px; font-size: 0.9em; color: #6b7280;" x-text="status"></div>
+    </div>
+
+    <!-- Dynamic Grid -->
+    <div class="grid" id="providers-grid">
+        <!-- Providers will be rendered here -->
+        <template x-for="p in providers" :key="p.id">
+            <div class="card">
+                <div class="provider-title" x-text="p.name"></div>
+                <div class="result-box">
+                    <!-- Loading State -->
+                    <div x-show="results[p.id] && results[p.id].loading" style="color: #6b7280; padding: 20px;">
+                        Synthesizing...
+                    </div>
+
+                    <!-- Result State -->
+                    <div x-show="results[p.id] && !results[p.id].loading && results[p.id].audio_url">
+                        <audio controls class="audio-player" :src="results[p.id].audio_url"></audio>
+                        <div class="metrics">
+                            <div>TTFB: <strong x-text="formatTime(results[p.id].ttfb_ms)"></strong></div>
+                            <div>Total: <span x-text="formatTime(results[p.id].total_time_ms)"></span></div>
+                        </div>
+                    </div>
+
+                    <!-- Error State -->
+                    <div x-show="results[p.id] && results[p.id].error" style="color: #dc2626;">
+                        Error: <span x-text="results[p.id].error"></span>
+                    </div>
+
+                    <!-- Idle State -->
+                    <div x-show="!results[p.id]" style="color: #9ca3af; padding: 20px;">
+                        Waiting for input...
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+    function ttsApp() {
+        return {
+            text: 'こんにちは、これはテストです。',
+            isProcessing: false,
+            status: 'Connecting...',
+            socket: null,
+            providers: [], // List of {id, name}
+            results: {},   // Map of id -> {loading, audio_url, ttfb_ms, total_time_ms, error}
+
+            init() {
+                this.connect();
+            },
+
+            connect() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                this.socket = new WebSocket(`${protocol}//${window.location.host}/ws/tts`);
+
+                this.socket.onopen = () => {
+                    console.log("TTS WebSocket Connected");
+                    this.status = 'Ready';
+                };
+
+                this.socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === "config") {
+                            this.providers = data.providers;
+                            // Initialize results state
+                            this.providers.forEach(p => {
+                                // Reactive assignment if needed, but Alpine handles new keys well usually.
+                                // It's safer to pre-populate for x-for to track properly if using complex objects
+                            });
+                        } else if (data.type === "tts_response") {
+                            this.handleResponse(data.results);
+                        } else if (data.type === "error") {
+                            this.status = "Error: " + data.message;
+                            this.isProcessing = false;
+                        }
+                    } catch (e) {
+                        console.error("Parse error", e);
+                    }
+                };
+
+                this.socket.onclose = () => {
+                    this.status = 'Disconnected';
+                    // Reconnect logic could go here
+                };
+            },
+
+            synthesize() {
+                if (!this.text.trim() || !this.socket) return;
+
+                this.isProcessing = true;
+                this.status = 'Synthesizing...';
+
+                // Reset results
+                this.providers.forEach(p => {
+                    this.results[p.id] = { loading: true, audio_url: null, error: null };
+                });
+
+                this.socket.send(JSON.stringify({
+                    type: 'tts_request',
+                    text: this.text
+                }));
+            },
+
+            handleResponse(resultsList) {
+                // resultsList is array of objects from backend
+                resultsList.forEach(res => {
+                    const id = res.provider_id || this.sanitizeId(res.provider);
+
+                    // Convert base64 to blob url
+                    let audioUrl = null;
+                    if (res.audio_base64) {
+                        const binary = atob(res.audio_base64);
+                        const array = [];
+                        for (let i = 0; i < binary.length; i++) {
+                            array.push(binary.charCodeAt(i));
+                        }
+                        const blob = new Blob([new Uint8Array(array)], { type: 'audio/wav' });
+                        audioUrl = URL.createObjectURL(blob);
+                    }
+
+                    this.results[id] = {
+                        loading: false,
+                        audio_url: audioUrl,
+                        ttfb_ms: res.ttfb_ms,
+                        total_time_ms: res.total_time_ms,
+                        error: res.error
+                    };
+                });
+
+                this.isProcessing = false;
+                this.status = 'Comparison Complete';
+            },
+
+            sanitizeId(name) {
+                return name.toLowerCase().replace(/ /g, "-").replace(/_/g, "-").replace(/\./g, "-");
+            },
+
+            formatTime(ms) {
+                if (ms === undefined || ms === null) return '-';
+                return ms.toFixed(0) + 'ms';
+            }
+        }
+    }
+</script>
+{% endblock %}
