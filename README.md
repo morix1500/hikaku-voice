@@ -4,9 +4,15 @@ A real-time Speech-to-Text (STT) and Text-to-Speech (TTS) comparator.
 Compare multiple providers side-by-side with fair latency measurement.
 
 ## Features
+### STT Comparison
+Compare transcription latency and accuracy across multiple STT providers using VAD-based measurement.
 
-- **STT Comparison**: Compare transcription latency and accuracy across multiple STT providers using VAD-based measurement.
-- **TTS Comparison**: Compare TTFB (Time To First Byte) and audio output quality across multiple TTS providers.
+https://github.com/user-attachments/assets/2984bfe4-cd05-4864-8060-ff044eb8c336
+
+### TTS Comparison
+Compare TTFB (Time To First Byte) and audio output quality across multiple TTS providers.
+
+https://github.com/user-attachments/assets/99f68f13-6d3c-46f7-b670-48c276f6ba74
 
 ## Setup
 
