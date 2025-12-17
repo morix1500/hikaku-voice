@@ -10,7 +10,7 @@ import certifi
 logger = logging.getLogger("stt-service")
 
 class STTManager:
-    def __init__(self, websocket, stt_plugins: list[stt.STT], response_format: str = "json"):
+    def __init__(self, websocket, stt_plugins: dict[str, stt.STT], response_format: str = "json"):
         self.websocket = websocket
         self.stt_plugins = stt_plugins
         self.response_format = response_format
@@ -39,7 +39,10 @@ class STTManager:
             # Standalone usage requires passing a client session
             self._session = aiohttp.ClientSession(connector=connector)
             
-            for plugin in self.stt_plugins:
+            if not isinstance(self.stt_plugins, dict):
+                 raise ValueError("stt_plugins must be a dictionary of {alias: plugin_instance}")
+
+            for provider_name, plugin in self.stt_plugins.items():
                 # Inject the shared session
                 # Most LiveKit STT plugins store the session in _session
                 # This is a hacky but necessary workaround for standalone usage without Agent context
@@ -48,14 +51,9 @@ class STTManager:
                 if hasattr(plugin, '_http_session'):
                     plugin._http_session = self._session
                 
-                # Identify the provider
-                # livekit.plugins.deepgram.STT -> 'deepgram'
-                # livekit.plugins.openai.STT -> 'openai'
-                # We can use the module name or class name, or assume the user might want to label them?
-                # For now, let's try to derive a name from the class module
-                provider_name = plugin.__module__.split('.')[-2] # e.g. 'openai' from 'livekit.plugins.openai.stt'
-                
-                # Handle duplicates (e.g. 2 deepgram instances)
+                # Handle duplicates automatically only for list-based config or if user made a mistake in dict keys (unlikely for dict keys but good safety)
+                # Actually for dict, keys are unique by definition.
+                # For list, we might have duplicates.
                 if provider_name in self.streams:
                     provider_name = f"{provider_name}_{id(plugin)}"
                 
@@ -69,13 +67,22 @@ class STTManager:
             logger.info(f"STT plugins initialized: {list(self.streams.keys())}")
             
             # Notify frontend of active providers so it can render columns immediately
+            # Send both ID (safe for HTML) and Name (display)
+            providers_config = []
+            for name in self.streams.keys():
+                safe_id = self._sanitize_id(name)
+                providers_config.append({"id": safe_id, "name": name})
+
             await self.websocket.send_json({
                 "type": "config",
-                "providers": list(self.streams.keys())
+                "providers": providers_config
             })
         except Exception as e:
             logger.error(f"Failed to initialize STT plugins: {e}")
             await self.websocket.send_json({"type": "error", "message": str(e)})
+
+    def _sanitize_id(self, name: str) -> str:
+        return name.lower().replace(" ", "-").replace("_", "-").replace(".", "-")
 
     async def process_audio(self, audio_bytes: bytes):
         # Assume 16kHz 16-bit mono PCM
@@ -97,6 +104,7 @@ class STTManager:
 
     async def _read_stream(self, stream, provider_name):
         logger.info(f"Started reading stream for {provider_name}")
+        safe_id = self._sanitize_id(provider_name)
         
         try:
             async for event in stream:
@@ -126,6 +134,7 @@ class STTManager:
                 payload = {
                     "type": "transcription",
                     "provider": provider_name,
+                    "provider_id": safe_id,
                     "text": text,
                     "is_final": is_final,
                     "confidence": event.alternatives[0].confidence if event.alternatives else 0.0,
@@ -140,9 +149,9 @@ class STTManager:
                         
                         html_content = ""
                         if is_final:
-                            logger.info(f"[{provider_name}] Generating HTML with latency: {latency_ms}")
+                            # logger.info(f"[{provider_name}] Generating HTML with latency: {latency_ms}")
                             html_content = f"""
-                            <div id="{provider_name}-log" hx-swap-oob="beforeend">
+                            <div id="{safe_id}-log" hx-swap-oob="beforeend">
                                 <div class="segment">
                                     <span class="text">{text}</span>
                                     <div class="latency">Latency: {latency_ms:.0f}ms</div>

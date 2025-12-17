@@ -1,7 +1,8 @@
 from livekit.plugins import deepgram, openai
 
 # Configure your STT plugins here
-stt_plugins = [
-    deepgram.STT(model="nova-2-general", language="ja"),
-    openai.STT(language="ja", use_realtime=True),
-]
+# Check stt_service.py for how to use aliases
+stt_plugins = {
+    "Deepgram Nova 2": deepgram.STT(model="nova-2-general", language="ja"),
+    "OpenAI Realtime": openai.STT(language="ja", use_realtime=True),
+}

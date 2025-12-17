@@ -101,25 +101,13 @@
         </div>
     </div>
 
-    <!-- Manual WebSocket connection for POC -->
+    <!-- Dynamic Grid -->
     <div>
-        <div class="grid">
-            <!-- OpenAI -->
-            <div class="card">
-                <h2>OpenAI</h2>
-                <div id="openai-log" class="log-box"></div>
-            </div>
-
-            <!-- Deepgram -->
-            <div class="card">
-                <h2>Deepgram</h2>
-                <div id="deepgram-log" class="log-box"></div>
-            </div>
-
-            <!-- Soniox -->
-            <div class="card">
-                <h2>Soniox</h2>
-                <div id="soniox-log" class="log-box"></div>
+        <div class="grid" id="providers-grid">
+            <!-- Columns will be injected here via JS -->
+            <!-- Placeholder for loading state -->
+            <div x-show="!providersLoaded" style="grid-column: 1/-1; text-align: center; color: #6b7280;">
+                Connecting to server...
             </div>
         </div>
     </div>
@@ -133,6 +121,7 @@
                 mediaStream: null,
                 workletNode: null,
                 socket: null,
+                providersLoaded: false,
 
                 async startRecording() {
                     try {
@@ -148,10 +137,25 @@
                         };
 
                         this.socket.onmessage = (event) => {
-                            // POC: Manual OOB Swap Handler
+                            // Check for JSON config message first
+                            try {
+                                const data = JSON.parse(event.data);
+                                if (data.type === "config") {
+                                    this.renderColumns(data.providers);
+                                    return;
+                                } else if (data.type === "error") {
+                                    console.error("Server Error:", data.message);
+                                    this.status = "Server Error: " + data.message;
+                                    return;
+                                }
+                            } catch (e) {
+                                // Not JSON, assume HTML
+                            }
+
+                            // POC: Manual OOB Swap Handler for HTML
                             const html = event.data;
                             // Basic check if it's the expected OOB div
-                            if (html.trim().startsWith('<div id=')) {
+                            if (typeof html === 'string' && html.trim().startsWith('<div id=')) {
                                 // Create a temp container to parse the HTML
                                 const temp = document.createElement('div');
                                 temp.innerHTML = html;
@@ -186,6 +190,33 @@
                         console.error(e);
                         this.status = 'Error: ' + e.message;
                     }
+                },
+
+                renderColumns(providers) {
+                    const grid = document.getElementById('providers-grid');
+                    grid.innerHTML = ''; // Clear placeholder
+                    
+                    providers.forEach(p => {
+                        // p.id is the sanitized ID (e.g. deepgram-nova-2)
+                        // p.name is the display name (e.g. Deepgram Nova 2)
+                        
+                        const card = document.createElement('div');
+                        card.className = 'card';
+                        
+                        const title = document.createElement('h2');
+                        title.textContent = p.name;
+                        
+                        const logBox = document.createElement('div');
+                        logBox.id = p.id + '-log'; // Matches backend: {safe_id}-log
+                        logBox.className = 'log-box';
+                        
+                        card.appendChild(title);
+                        card.appendChild(logBox);
+                        grid.appendChild(card);
+                    });
+                    
+                    this.providersLoaded = true;
+                    console.log("Rendered columns for:", providers);
                 },
 
                 async setupAudio() {
