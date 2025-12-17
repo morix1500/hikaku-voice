@@ -78,7 +78,7 @@
                     // 1. Setup WebSocket
                     // Use relative path for WS
                     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    this.socket = new WebSocket(`${protocol}//${window.location.host}/ws?response_format=html`);
+                    this.socket = new WebSocket(`${protocol}//${window.location.host}/ws/stt?response_format=html`);
 
                     this.socket.onopen = async () => {
                         console.log("WebSocket Connected");

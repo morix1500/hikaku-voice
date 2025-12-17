@@ -34,6 +34,7 @@ except ImportError:
     tts_plugins = {}
 
 @app.get("/")
+@app.get("/stt")
 async def index_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
@@ -41,7 +42,7 @@ async def index_page(request: Request):
 async def tts_page(request: Request):
     return templates.TemplateResponse("tts.html", {"request": request})
 
-@app.websocket("/ws")
+@app.websocket("/ws/stt")
 async def websocket_endpoint(websocket: WebSocket, response_format: str = "json"):
     await websocket.accept()
     logger.info(f"Client connected to STT (format: {response_format})")
