@@ -7,12 +7,12 @@ Compare multiple providers side-by-side with fair latency measurement.
 ### STT Comparison
 Compare transcription latency and accuracy across multiple STT providers using VAD-based measurement.
 
-https://github.com/user-attachments/assets/2984bfe4-cd05-4864-8060-ff044eb8c336
+![video1](https://github.com/user-attachments/assets/fd54f3c6-1514-44ee-8310-ec20fe64e1e8)
 
 ### TTS Comparison
 Compare TTFB (Time To First Byte) and audio output quality across multiple TTS providers.
 
-https://github.com/user-attachments/assets/99f68f13-6d3c-46f7-b670-48c276f6ba74
+![video2](https://github.com/user-attachments/assets/317e2ec8-303b-4b95-ab18-be7fa9b5a09b)
 
 ## Setup
 
