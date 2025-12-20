@@ -24,6 +24,9 @@ try:
 except ImportError:
     logger.error("plugins_config.py not found (STT).")
     stt_plugins = {}
+except Exception as e:
+    logger.error(f"Failed to load STT plugins: {e}")
+    stt_plugins = {}
 
 # --- TTS Configuration ---
 try:
