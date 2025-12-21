@@ -84,3 +84,7 @@ Access the interface at **http://localhost:8009**.
 1. Enter text in the input field.
 2. Click **Compare TTS**.
 3. Listen to audio outputs and compare TTFB across providers.
+
+## Disclaimer
+
+This software uses third-party STT (Speech-to-Text) and TTS (Text-to-Speech) services that may incur costs. **The authors and contributors of this project are not responsible for any charges or fees incurred through the use of this software.** Users are solely responsible for understanding and managing the costs associated with the API providers they choose to use.
