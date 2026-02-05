@@ -3,6 +3,7 @@ import time
 import logging
 from livekit import agents, rtc
 from livekit.agents import stt
+from livekit.plugins import silero
 import aiohttp
 import ssl
 import certifi
@@ -18,6 +19,7 @@ class STTManager:
         self._tasks = set()
         self._session = None
         self.last_client_vad_eos = None
+        self._vad = None  # VAD instance for non-streaming STT
 
     def handle_control_message(self, data: dict):
         if data.get("type") == "vad_speech_end":
@@ -50,15 +52,24 @@ class STTManager:
                     plugin._session = self._session # type: ignore
                 if hasattr(plugin, '_http_session'):
                     plugin._http_session = self._session # type: ignore
-                
+
                 # Handle duplicates automatically only for list-based config or if user made a mistake in dict keys (unlikely for dict keys but good safety)
                 # Actually for dict, keys are unique by definition.
                 # For list, we might have duplicates.
                 if provider_name in self.streams:
                     provider_name = f"{provider_name}_{id(plugin)}"
-                
+
                 logger.info(f"Initializing stream for {provider_name}")
-                stream = plugin.stream()
+
+                # Check if STT supports streaming, if not wrap with StreamAdapter
+                stt_to_use = plugin
+                if not plugin.capabilities.streaming:
+                    logger.info(f"{provider_name} does not support streaming, wrapping with StreamAdapter")
+                    if self._vad is None:
+                        self._vad = silero.VAD.load()
+                    stt_to_use = stt.StreamAdapter(stt=plugin, vad=self._vad)
+
+                stream = stt_to_use.stream()
                 self.streams[provider_name] = stream
                 
                 task = asyncio.create_task(self._read_stream(stream, provider_name))
