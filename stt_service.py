@@ -18,19 +18,17 @@ class STTManager:
         self.streams = {} # Map provider name (or index/id) to stream
         self._tasks = set()
         self._session = None
-        self.last_client_vad_eos = None
+        self._latest_vad_eos: float | None = None  # Latest VAD end-of-speech timestamp (shared)
+        self._provider_last_used_vad: dict[str, float | None] = {}  # Per-provider: last VAD timestamp used
         self._vad = None  # VAD instance for non-streaming STT
 
     def handle_control_message(self, data: dict):
         if data.get("type") == "vad_speech_end":
-            # Use provided timestamp if available, otherwise fallback to current time
-            timestamp = data.get("timestamp")
-            if timestamp:
-                self.last_client_vad_eos = float(timestamp)
-            else:
-                self.last_client_vad_eos = time.time()
-                
-            logger.info(f"Client VAD: Speech ended at {self.last_client_vad_eos}")
+            # Client VAD fires after SILENCE_DURATION (300ms) of silence
+            # Subtract this to estimate actual speech end time
+            SILENCE_DURATION_SEC = 0.3
+            self._latest_vad_eos = time.time() - SILENCE_DURATION_SEC
+            logger.info(f"Client VAD: Speech ended (estimated) at {self._latest_vad_eos}")
 
     async def initialize(self):
         try:
@@ -71,7 +69,8 @@ class STTManager:
 
                 stream = stt_to_use.stream()
                 self.streams[provider_name] = stream
-                
+                self._provider_last_used_vad[provider_name] = None  # Initialize last used VAD timestamp
+
                 task = asyncio.create_task(self._read_stream(stream, provider_name))
                 self._tasks.add(task)
             
@@ -132,15 +131,14 @@ class STTManager:
                 # Calculate latency
                 latency_ms = 0.0
                 if is_final and event.alternatives:
-                    # STRICT FAIRNESS: Only use Client VAD timestamp for ALL providers.
-                    if self.last_client_vad_eos:
-                         latency_ms = (current_time - self.last_client_vad_eos) * 1000
+                    # Use latest VAD EOS, but only if it hasn't been used by this provider yet
+                    last_used = self._provider_last_used_vad.get(provider_name)
+                    if self._latest_vad_eos and (last_used is None or self._latest_vad_eos > last_used):
+                        latency_ms = (current_time - self._latest_vad_eos) * 1000
+                        self._provider_last_used_vad[provider_name] = self._latest_vad_eos
+                        logger.info(f"[{provider_name}] FINAL: '{text[:20]}' latency={latency_ms:.0f}ms")
                     else:
-                        logger.debug(f"[{provider_name}] No Client VAD signal yet. Skipping latency calc.")
-                        latency_ms = 0.0
-
-                    if latency_ms == 0.0:
-                         logger.debug(f"[{provider_name}] Latency is 0.0. vad_eos={self.last_client_vad_eos}")
+                        logger.info(f"[{provider_name}] FINAL: '{text[:20]}' - no new VAD, skipping latency")
 
                 payload = {
                     "type": "transcription",
